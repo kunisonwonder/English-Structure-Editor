@@ -181,7 +181,7 @@ rt { font-family: 'Noto Sans JP', sans-serif; font-size: 10px; color: #e11d48; f
 </div>
 
 <div class="main-area">
-  <div class="toolbar-container"><div id="save-status" style="font-size:12px;color:#6b7280;text-align:right;height:16px;">保存準備中</div>
+  <div class="toolbar-container">
     <div class="toolbar-row">
       <input type="text" id="doc-title" class="doc-title-input" placeholder="無題のドキュメント" onchange="updateDocTitle(this.value)">
     </div>
@@ -285,20 +285,26 @@ rt { font-family: 'Noto Sans JP', sans-serif; font-size: 10px; color: #e11d48; f
 </div>
 
 <script>
-const STORAGE_KEY = 'ese_docs_pro';
-const DB_NAME = 'EnglishStructureEditorDB';
-const DB_STORE = 'documents';
-const defaultDocs = [{ id: Date.now(), title: '最初のドキュメント', content: '<p>ここに英文を入力してください。</p>' }];
-function getLocalDocs(){ try { const x=localStorage.getItem(STORAGE_KEY); const d=x?JSON.parse(x):null; return Array.isArray(d)&&d.length?d:null; } catch(e){ return null; } }
-let docs = getLocalDocs() || defaultDocs;
-function putLocalDocs(){ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(docs)); return true; } catch(e){ console.warn(e); return false; } }
-function openDB(){ return new Promise((resolve,reject)=>{ if(!window.indexedDB)return reject(new Error('IndexedDB unavailable')); const r=indexedDB.open(DB_NAME,1); r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(DB_STORE))r.result.createObjectStore(DB_STORE,{keyPath:'key'});}; r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); }); }
-async function getDBDocs(){ try{const db=await openDB(); return await new Promise((res,rej)=>{const r=db.transaction(DB_STORE,'readonly').objectStore(DB_STORE).get('docs');r.onsuccess=()=>{db.close();res(r.result&&r.result.value||null)};r.onerror=()=>{db.close();rej(r.error)}})}catch(e){return null;} }
-async function putDBDocs(){ try{const db=await openDB(); await new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).put({key:'docs',value:JSON.parse(JSON.stringify(docs))});tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});db.close();return true;}catch(e){return false;} }
+// -----------------------------------------------------
+// ★ 1. 初期化とデータ読み込み
+// -----------------------------------------------------
+let docs = [];
 
-if (!Array.isArray(docs) || docs.length === 0) {
-    docs = [{ id: Date.now(), title: '最初のドキュメント', content: '<p>ここに英文を入力してください。</p>' }];
+// localStorageからの読み込みを安全に行う（エラー時は初期化）
+try {
+  const storedData = localStorage.getItem('ese_docs_pro');
+  if (storedData) {
+    docs = JSON.parse(storedData);
+  }
+} catch (e) {
+  console.warn('ローカルデータの読み込みに失敗しました。', e);
 }
+
+// データが空、または不正な場合は初期データを作成
+if (!Array.isArray(docs) || docs.length === 0) {
+  docs = [{ id: Date.now(), title: '最初のドキュメント', content: '<p>ここに英文を入力してください。</p>' }];
+}
+
 let currentDocId = docs[0].id;
 const editor = document.getElementById('editor');
 
@@ -306,7 +312,9 @@ let historyStack = [];
 let historyIndex = -1;
 let isRestoringHistory = false;
 
-// iPad/Safari対策: 選択範囲の保持
+// -----------------------------------------------------
+// ★ 2. 選択範囲（iPad/Safari対応）の処理
+// -----------------------------------------------------
 let savedSelectionRange = null;
 let selectionSaveTimer = null;
 let editorSelectionActive = false;
@@ -353,18 +361,36 @@ document.addEventListener('pointerdown', (e) => {
   }
 }, {capture:true});
 
+// -----------------------------------------------------
+// ★ 3. メインフロー（起動時、自動保存）
+// -----------------------------------------------------
+window.onload = () => {
+  renderDocList();
+  loadDoc(currentDocId); // 初期ドキュメントの読み込み
 
-window.onload = async () => {
-  const dbDocs = await getDBDocs();
-  if (Array.isArray(dbDocs) && dbDocs.length) docs = dbDocs;
-  if (!Array.isArray(docs) || !docs.length) docs = defaultDocs;
-  currentDocId = docs[0].id;
-  renderDocList(); loadDoc(currentDocId);
-  editor.addEventListener('input', () => { if(!isRestoringHistory) saveHistory(); updateNotesDisplay(); saveData(); });
-  setInterval(saveData, 30000);
-  window.addEventListener('pagehide', () => { const d=docs.find(x=>x.id===currentDocId); if(d)d.content=editor.innerHTML; putLocalDocs(); });
+  editor.addEventListener('input', () => {
+    if(!isRestoringHistory) saveHistory();
+    updateNotesDisplay();
+  });
+
+  // 自動保存
+  const autoSave = () => {
+    try {
+      saveData();
+    } catch (e) {
+      console.warn('自動保存に失敗しました:', e);
+    }
+  };
+
+  setInterval(autoSave, 15000); // 15秒ごとに短縮して保存を確実にする
+  window.addEventListener('pagehide', autoSave);
+  window.addEventListener('beforeunload', autoSave);
+  autoSave();
 };
 
+// -----------------------------------------------------
+// ★ 4. UIコンポーネント (Modal, Toast)
+// -----------------------------------------------------
 const modal = {
   overlay: document.getElementById('custom-modal'),
   title: document.getElementById('modal-title'),
@@ -392,9 +418,6 @@ const modal = {
       inputEl.placeholder = inputConfig.placeholder || '';
       inputEl.value = inputConfig.value || '';
       if(inputConfig.readonly) inputEl.setAttribute('readonly', 'readonly');
-      this.inputs.appendChild(inputEl);
-      
-      // Enterキーで主要ボタン（青色）を押した扱いに機能復活
       this.inputs.appendChild(inputEl);
       
       if (inputConfig.type !== 'textarea') {
@@ -432,6 +455,9 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
+// -----------------------------------------------------
+// ★ 5. ドキュメント管理 (一覧、読込、新規、削除、保存)
+// -----------------------------------------------------
 function renderDocList() {
   const list = document.getElementById('doc-list');
   list.innerHTML = '';
@@ -456,10 +482,12 @@ function renderDocList() {
 }
 
 function loadDoc(id) {
-  if (currentDocId) {
+  // ★重要修正: 「現在別のドキュメントを開いている場合」のみ上書き保存する
+  if (currentDocId && currentDocId !== id) {
     const currentDoc = docs.find(d => d.id === currentDocId);
     if (currentDoc) currentDoc.content = editor.innerHTML;
   }
+  
   currentDocId = id;
   const doc = docs.find(d => d.id === id);
   if (doc) {
@@ -475,9 +503,14 @@ function loadDoc(id) {
 }
 
 function createNewDoc() {
-  const newDoc = { id: Date.now(), title: '新規ドキュメント', content: '<p><br></p>' };
+  saveData(); // 現在の内容を念のため保存
+  
+  // ★重要修正: IDが被らないように、現在時刻 + ランダムな数値を使う
+  const newId = Date.now() + Math.floor(Math.random() * 1000);
+  const newDoc = { id: newId, title: '新規ドキュメント', content: '<p><br></p>' };
+  
   docs.push(newDoc);
-  loadDoc(newDoc.id);
+  loadDoc(newId);
 }
 
 function deleteDoc(id) {
@@ -495,19 +528,27 @@ function deleteDoc(id) {
 
 function updateDocTitle(title) {
   const doc = docs.find(d => d.id === currentDocId);
-  if (doc) { doc.title = title || '無題'; renderDocList(); saveData(); }
+  if (doc) {
+    doc.title = title || '無題';
+    renderDocList();
+    saveData();
+  }
 }
 
-async function saveData() {
+function saveData() {
   const currentDoc = docs.find(d => d.id === currentDocId);
   if (currentDoc) currentDoc.content = editor.innerHTML;
-  putLocalDocs();
-  await putDBDocs();
-  const st=document.getElementById('save-status'); if(st) st.textContent='✓ 保存済み';
+  
+  try {
+    localStorage.setItem('ese_docs_pro', JSON.stringify(docs));
+  } catch (e) {
+    console.error('保存エラー:', e);
+    showToast('エラー: 保存に失敗しました。容量上限などの問題があります。');
+  }
 }
 
 // -----------------------------------------------------
-// ★ テキストベースのデータ同期機能（コピペ用）
+// ★ 6. データの入出力 (エクスポート/インポート)
 // -----------------------------------------------------
 function exportDataAsText() {
   saveData();
@@ -533,18 +574,18 @@ function exportDataAsText() {
 }
 
 function showImportModal() {
+  // ★上書き機能（ボタン）を削除し、追加のみにする
   modal.show('データの読み込み（貼り付け）', 
     '別の端末でコピーしたデータのテキストを、下の枠内に貼り付けてください。', 
     [
       { text: 'キャンセル', class: 'btn' },
-      { text: '追加する', class: 'btn', onClick: (val) => { processImport(val, 'add'); } },
-      { text: 'すべて上書き', class: 'danger', onClick: (val) => { processImport(val, 'overwrite'); } }
+      { text: 'データを追加する', class: 'primary', onClick: (val) => { processImport(val); } }
     ], 
     { type: 'textarea', placeholder: '[{"id":...}] データをここに貼り付け' }
   );
 }
 
-function processImport(jsonString, mode) {
+function processImport(jsonString) {
   if(!jsonString || jsonString.trim() === '') {
     showToast('テキストが入力されていません');
     return;
@@ -554,25 +595,25 @@ function processImport(jsonString, mode) {
     if (!Array.isArray(importedDocs) || importedDocs.length === 0 || !importedDocs[0].id || !importedDocs[0].content) {
       throw new Error("正しいデータ形式ではありません");
     }
-    if (mode === 'add') {
-      importedDocs.forEach(doc => {
-        doc.id = Date.now() + Math.floor(Math.random() * 1000);
-        docs.push(doc);
-      });
-      saveData();
-      renderDocList();
-      showToast('データを追加しました');
-    } else if (mode === 'overwrite') {
-      docs = importedDocs;
-      saveData();
-      loadDoc(docs[0].id);
-      showToast('データを上書きしました');
-    }
+    
+    // 現在のリストにインポートしたデータを追加（IDは新しく振る）
+    importedDocs.forEach(doc => {
+      doc.id = Date.now() + Math.floor(Math.random() * 1000);
+      docs.push(doc);
+    });
+    
+    saveData();
+    renderDocList();
+    showToast('データを追加しました');
+    
   } catch (error) {
     alert("データの読み込みに失敗しました。\n詳細: " + error.message);
   }
 }
 
+// -----------------------------------------------------
+// ★ 7. エディタの編集・装飾機能
+// -----------------------------------------------------
 function saveHistory() {
   const content = editor.innerHTML;
   if (historyIndex >= 0 && historyStack[historyIndex] === content) return;
@@ -621,7 +662,6 @@ function showInputTextModal() {
     }
   ], { type: 'textarea', placeholder: 'ここに英文を貼り付け...' });
 }
-
 
 function getSelectionRange(allowWordFallback = false) {
   const sel = window.getSelection();
