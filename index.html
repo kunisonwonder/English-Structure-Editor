@@ -74,47 +74,67 @@ body { margin: 0; font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic Pr
 
 .print-legend { display: none; }
 
+/* 改ページ線 */
+.page-break-mark {
+  border: none;
+  background-color: var(--bg-color);
+  height: 60px;
+  margin: 60px -40px;
+  width: calc(100% + 80px);
+  position: relative;
+  display: block;
+  user-select: none;
+  border-top: 1px solid #d1d5db;
+  border-bottom: 1px solid #d1d5db;
+}
+.page-break-mark::after {
+  content: "--- 新しいページ ---";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: transparent;
+  color: #9ca3af;
+  font-size: 13px;
+  font-family: 'Noto Sans JP', sans-serif;
+  font-weight: bold;
+}
+
 /* Free Comment (ドラッグ可能なコメント) */
 .free-comment {
-    position: absolute; left: 0; top: 0; cursor: grab; z-index: 50; padding: 2px 5px;
+    position: absolute; left: 0; top: 0; cursor: grab; z-index: 50; padding: 4px;
     font-family: 'Noto Sans JP', sans-serif; touch-action: none; line-height: 1.4; background: transparent;
+    display: inline-block;
 }
 .free-comment:active { cursor: grabbing; }
 
-/* ★ 旧来の削除ボタン（後方互換） */
-.free-comment > .fc-delete {
-    position: absolute; top: -8px; right: -8px; background: white; color: #ef4444; border: 1px solid #ef4444; border-radius: 50%;
-    width: 16px; height: 16px; font-size: 10px; line-height: 14px; text-align: center; cursor: pointer; display: none; font-family: Arial, sans-serif;
-}
-.free-comment:hover > .fc-delete { display: block; }
-@media (pointer: coarse) { .free-comment > .fc-delete { display: block; opacity: 0.7; } }
-
-/* ★ 新しいコメントコントロールパネル（拡大・縮小・削除） */
+/* コントロール群（削除・サイズ変更） */
 .fc-controls {
-    position: absolute; top: -26px; right: 0; display: none; gap: 4px;
+    position: absolute; top: -10px; right: -10px; display: none; gap: 4px; z-index: 51;
 }
-.free-comment:hover .fc-controls { display: flex; }
-@media (pointer: coarse) { .free-comment .fc-controls { display: flex; opacity: 0.8; } }
+.free-comment:hover .fc-controls, .free-comment:hover .fc-resize-handle { display: flex; }
+@media (pointer: coarse) { 
+    .fc-controls { display: flex; opacity: 0.8; }
+    .fc-resize-handle { display: block; opacity: 0.8; }
+}
 
 .fc-btn {
-    background: white; color: #4b5563; border: 1px solid #d1d5db; border-radius: 4px;
-    width: 24px; height: 24px; font-size: 16px; line-height: 22px; text-align: center; cursor: pointer; font-family: Arial, sans-serif;
-    user-select: none; box-sizing: border-box; font-weight: bold; display: block; padding: 0;
+    background: white; border-radius: 50%; width: 18px; height: 18px;
+    font-size: 12px; line-height: 16px; text-align: center; cursor: pointer;
+    font-family: Arial, sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    user-select: none;
 }
-.fc-btn:hover { background: #f3f4f6; }
-.fc-btn.fc-delete-new { color: #ef4444; border-color: #fca5a5; font-size: 14px; }
-.fc-btn.fc-delete-new:hover { background: #fef2f2; }
+.fc-delete-new { color: #ef4444; border: 1px solid #ef4444; }
 
-/* サイズ変更用ハンドル */
+/* リサイズ用の青い丸（右下） */
 .fc-resize-handle {
-    position: absolute; bottom: -4px; right: -4px; width: 14px; height: 14px;
-    background: #3b82f6; border: 2px solid white; border-radius: 50%;
-    cursor: nwse-resize; display: none; box-shadow: 0 1px 3px rgba(0,0,0,0.3); z-index: 60;
+    position: absolute; right: -5px; bottom: -5px; width: 14px; height: 14px;
+    background-color: #3b82f6; border-radius: 50%; cursor: ew-resize;
+    border: 2px solid white; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    z-index: 52; display: none; user-select: none; touch-action: none;
 }
-.free-comment:hover .fc-resize-handle { display: block; }
-@media (pointer: coarse) { .free-comment .fc-resize-handle { display: block; opacity: 0.8; } }
 
-/* Token & Role Settings */
+/* Input Source Modal */
 .token { position: relative; display: inline; margin: 0 1px; }
 
 .role-S { background: var(--c-s-bg); border-bottom: 1px solid var(--c-s-border); }
@@ -190,8 +210,8 @@ rt:active { cursor: grabbing; }
 /* 印刷時の設定 */
 @media print {
   @page {
-    margin-top: 15mm; /* 上部の空白 */
-    margin-bottom: 15mm; /* 下部の空白 */
+    size: A4;
+    margin: 25mm 20mm; /* 上下の余白25mm、左右の余白20mm (画像に近いゆったりとした余白) */
   }
   * {
     -webkit-print-color-adjust: exact !important;
@@ -202,13 +222,25 @@ rt:active { cursor: grabbing; }
   .sidebar, .toolbar-container, .no-print, #floating-toolbar { display: none !important; }
   body, .main-area, .editor-wrapper, .editor-paper { height: auto; overflow: visible !important; background: white; margin: 0; padding: 0; display: block; box-shadow: none; border: none; }
   
-  /* 印刷時も画面と同じ幅を完全維持 */
+  /* 印刷時も画面と同じ幅を完全維持しつつ、パディングで内側の余白を調整 */
   .editor-wrapper { padding: 0 !important; }
-  .editor-paper { padding: 40px !important; margin: 0 auto; width: 750px !important; min-width: 750px !important; max-width: 750px !important; box-sizing: border-box !important; } 
+  .editor-paper { padding: 10px 20px !important; margin: 0 auto; width: 750px !important; min-width: 750px !important; max-width: 750px !important; box-sizing: border-box !important; } 
 
-  .print-legend { display: block; font-size: 12px; margin-bottom: 10px; text-align: right; }
-  .notes-section { page-break-inside: avoid; margin-top: 20px; border-top: 1px solid #000; padding-top: 10px; }
-  .note-item { border-bottom: none; padding: 2px 0; }
+  .print-legend { display: block; font-size: 12px; margin-bottom: 15px; text-align: right; }
+  
+  /* 語注セクションは直前で必ず改ページ */
+  .notes-section { page-break-before: always; break-before: page; margin-top: 20px; border-top: 1px solid #000; padding-top: 10px; }
+  
+  /* 見出しと中身が泣き別れにならないようにする */
+  .notes-title { page-break-after: avoid; break-after: avoid; margin-bottom: 15px; }
+  
+  /* 印刷時の単語リストレイアウトを安定させる */
+  .notes-grid { display: flex !important; flex-wrap: wrap !important; gap: 0 !important; }
+  .note-item { width: 50% !important; box-sizing: border-box; padding-right: 15px !important; page-break-inside: avoid; break-inside: avoid; border-bottom: none; padding-top: 4px !important; padding-bottom: 4px !important; }
+
+  /* 画面上の改ページを印刷時の強制改ページに変換 */
+  .page-break-mark { page-break-before: always !important; break-before: page !important; border: none !important; margin: 0 !important; padding: 0 !important; height: 0 !important; background: transparent !important; }
+  .page-break-mark::after { display: none !important; }
 
   /* 印刷時はコメントの操作ボタンを隠す */
   .fc-controls, .fc-delete-new, .fc-delete, .fc-resize-handle { display: none !important; }
@@ -221,8 +253,8 @@ rt:active { cursor: grabbing; }
   body.print-student .omission { display: none !important; }
   body.print-student rt { visibility: hidden; }
   
-  /* 印刷時はコメントの操作ボタンを隠す */
-  .fc-delete, .fc-controls { display: none !important; }
+  /* 蛍光ペンなし解答用PDF：背景色のみを透明にする */
+  body.print-no-bg .token { background: transparent !important; }
 }
 
 /* Floating Toolbar */
@@ -265,6 +297,7 @@ rt:active { cursor: grabbing; }
         <button class="btn" onclick="execCmd('redo')" title="やり直し (Ctrl+Y)">進む</button>
         <button class="btn" onclick="showInputTextModal()">長文入力</button>
         <button class="btn" onclick="showAddCommentModal()" style="font-weight: bold; color: #2563eb;">ｺﾒﾝﾄ追加</button>
+        <button class="btn" onclick="insertPageBreak()" title="カーソル位置で改ページ">改ページ</button>
       </div>
       <div class="toolbar-group">
         <button class="btn" onclick="applyRole('S')" style="color:var(--c-s-text); font-weight:bold;">S</button>
@@ -285,8 +318,9 @@ rt:active { cursor: grabbing; }
         <button class="btn danger" onclick="removeFormatting()" title="選択範囲の装飾を解除">装飾解除</button>
       </div>
       <div class="toolbar-group" style="margin-left: auto;">
-        <button class="btn print-s" onclick="printDocument('student')">生徒用PDF出力</button>
-        <button class="btn print-a" onclick="printDocument('answer')">解答用PDF出力</button>
+        <button class="btn print-s" onclick="printDocument('student')">生徒用PDF</button>
+        <button class="btn print-a" onclick="printDocument('answer-no-bg')">解答用(背景無)</button>
+        <button class="btn print-a" onclick="printDocument('answer')">解答用(背景有)</button>
       </div>
     </div>
   </div>
@@ -338,7 +372,6 @@ rt:active { cursor: grabbing; }
     <button class="ft-btn role-c-btn" onpointerdown="event.preventDefault(); applyRole(`C&quot;`)" >C"</button>
     <button class="ft-btn role-m-btn" onpointerdown="event.preventDefault(); applyRole(`M&quot;`)" >M"</button>
   </div>
-  <!-- S''' などのボタン（内部のクォーテーションエラー対策でエスケープシーケンスを使用） -->
   <div class="ft-row">
     <button class="ft-btn role-s-btn" onpointerdown="event.preventDefault(); applyRole(`S\u0027\u0027\u0027`)" >S'''</button>
     <button class="ft-btn role-v-btn" onpointerdown="event.preventDefault(); applyRole(`V\u0027\u0027\u0027`)" >V'''</button>
@@ -363,7 +396,6 @@ rt:active { cursor: grabbing; }
     <button class="ft-btn role-o-btn" onpointerdown="event.preventDefault(); applyRole('O₂')">O<sub>2</sub></button>
     <button class="ft-btn role-c-btn" onpointerdown="event.preventDefault(); applyRole('C₂')">C<sub>2</sub></button>
   </div>
-  <!-- S₃, V₃... S₄, V₄... のボタン -->
   <div class="ft-row">
     <button class="ft-btn role-s-btn" onpointerdown="event.preventDefault(); applyRole('S₃')">S<sub>3</sub></button>
     <button class="ft-btn role-v-btn" onpointerdown="event.preventDefault(); applyRole('V₃')">V<sub>3</sub></button>
@@ -782,6 +814,12 @@ function showInputTextModal() {
   ], { type: 'textarea', placeholder: 'ここに英文を貼り付け...' });
 }
 
+function insertPageBreak() {
+  editor.focus();
+  document.execCommand('insertHTML', false, '<hr class="page-break-mark"><p><br></p>');
+  saveHistory();
+}
+
 function showAddCommentModal() {
   const bodyHtml = `
     <div style="margin-bottom: 10px;">
@@ -820,8 +858,15 @@ function addFreeComment(text, color, weight) {
     fc.style.fontWeight = weight;
     fc.style.fontSize = '14px'; // 初期サイズ
     
+    // ★現在のスクロール位置を計算して、見えている画面の上部に表示
+    const editorRect = editor.getBoundingClientRect();
+    const wrapper = document.querySelector('.editor-wrapper');
+    const wrapperRect = wrapper.getBoundingClientRect();
+    
+    let startY = wrapper.scrollTop + 40; // スクロール量ベースで計算
+    if (startY < 20) startY = 20; // エディタ上端よりは上に行かないように
+    
     const startX = 20; 
-    const startY = 20; 
     
     fc.style.transform = `translate(${startX}px, ${startY}px)`;
     fc.setAttribute('data-dx', startX);
@@ -1177,11 +1222,18 @@ function showFloatingToolbar(e = null) {
 function hideFloatingToolbar() { document.getElementById('floating-toolbar').classList.remove('active'); }
 
 function printDocument(mode) {
-  if(mode === 'student') document.body.classList.add('print-student');
-  else document.body.classList.remove('print-student');
+  document.body.classList.remove('print-student', 'print-no-bg');
+  
+  if(mode === 'student') {
+    document.body.classList.add('print-student');
+  } else if (mode === 'answer-no-bg') {
+    document.body.classList.add('print-no-bg');
+  }
+  
   window.print();
+  
   window.addEventListener('afterprint', function cleanup() {
-    document.body.classList.remove('print-student');
+    document.body.classList.remove('print-student', 'print-no-bg');
     window.removeEventListener('afterprint', cleanup);
   });
 }
